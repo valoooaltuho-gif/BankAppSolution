@@ -1,0 +1,14 @@
+﻿<!-- BankApp.Core/BankApp.Core.csproj -->
+
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Убедитесь, что здесь нет OutputType Library -->
+  </PropertyGroup>
+
+  
+
+</Project>

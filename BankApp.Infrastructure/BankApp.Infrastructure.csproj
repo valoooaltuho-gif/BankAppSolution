@@ -1,0 +1,31 @@
+﻿<!-- BankApp.Infrastructure/BankApp.Infrastructure.csproj -->
+
+<!-- ВОТ ТАК ДОЛЖЕН ВЫГЛЯДЕТЬ ФАЙЛ -->
+<Project Sdk="Microsoft.NET.Sdk"> 
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Пакеты для Entity Framework Core и SQLite -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.App" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.1" />
+  </ItemGroup>
+
+   
+
+  <ItemGroup>
+    <!-- Ссылка на проект Core -->
+    <ProjectReference Include="..\BankApp.Core\BankApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>
