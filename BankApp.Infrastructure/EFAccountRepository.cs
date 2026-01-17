@@ -32,10 +32,22 @@ namespace BankApp.Infrastructure
 
         public async Task UpdateAsync(Account account)
         {
-            // EF Core отслеживает изменения автоматически, достаточно SaveChangesAsync
-            _context.Accounts.Update(account);
-            await _context.SaveChangesAsync();
+
+            var rowsAffected = await _context.Accounts
+        .Where(a => a.Id == account.Id)
+        .ExecuteUpdateAsync(updates => updates
+            .SetProperty(a => a.Balance, account.Balance)
+            .SetProperty(a => a.OwnerName, account.OwnerName)
+        // Добавьте сюда все остальные свойства, которые могут меняться
+        );
+
+            if (rowsAffected == 0)
+            {
+                throw new DbUpdateConcurrencyException("The database operation was expected to affect 1 row(s), but actually affected 0 row(s); data may have been modified or deleted since entities were loaded.");
+            }
+
         }
+
 
         public async Task<IEnumerable<Account>> GetAllAsync()
         {

@@ -12,10 +12,14 @@ using BankApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Настройка базы данных SQLite
-// Убедитесь, что в appsettings.json есть "DefaultConnection": "Data Source=BankApp.db"
-builder.Services.AddDbContext<BankContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+var environment = builder.Environment;
+
+if (!environment.IsEnvironment("IntegrationTesting"))
+{
+    // Убедитесь, что в appsettings.json есть "DefaultConnection": "Data Source=BankApp.db"
+    builder.Services.AddDbContext<BankContext>(options =>
+        options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IAccountRepository, EFAccountRepository>();
@@ -41,7 +45,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // 4. Настройка JWT Аутентификации и Авторизации
-var jwtKey = builder.Configuration["Jwt:Key"];
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopmentOnly123!";
 var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(options =>
@@ -115,20 +119,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// 6. Инициализация базы данных (Seed Data)
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    try
-    {
-        // Вызов вашего метода для создания начальных пользователей
-        await DbInitializer.SeedUsers(services);
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Ошибка при инициализации базы данных.");
-    }
-}
-
 app.Run();
+
+public partial class Program { }
+

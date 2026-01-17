@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization; // Оставьте этот using
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BankApp.Core.Models
 {
@@ -21,6 +22,8 @@ namespace BankApp.Core.Models
         public DateTime CreatedAt { get; set; }
 
         public List<Transaction> Transactions { get; set; } // Оставьте List<Transaction>
+        [NotMapped]
+        public object? ConcurrencyToken { get; set; }
 
         private Account()
         {

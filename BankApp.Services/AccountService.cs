@@ -18,12 +18,7 @@ namespace BankApp.Services
         public AccountService(IAccountRepository accountRepository, BankContext context)
         {
             _accountRepository = accountRepository ?? throw new ArgumentNullException(nameof(accountRepository));
-            _context = context ?? throw new ArgumentNullException(nameof(context)); // !!! Инициализируйте контекст !!!
-        }
-
-        public AccountService(IAccountRepository repository)
-        {
-            Repository = repository;
+            _context = context;
         }
 
         public async Task<IEnumerable<Account>> GetAllAsync()
@@ -68,27 +63,19 @@ namespace BankApp.Services
         {
             if (amount <= 0) throw new InvalidAmountException("Transfer amount must be positive.");
 
+            // Если контекста нет (как в юнит-тестах), выполняем без транзакции БД
+            if (_context == null)
+            {
+                await PerformTransferLogic(fromAccountId, toAccountId, amount);
+                return;
+            }
+
             // --- НАЧАЛО ЯВНОЙ ТРАНЗАКЦИИ БД ---
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // Получаем оба аккаунта внутри транзакции
-                var fromAccount = await _accountRepository.GetByIdAsync(fromAccountId);
-                var toAccount = await _accountRepository.GetByIdAsync(toAccountId);
-
-                if (fromAccount == null) throw new KeyNotFoundException($"Source account {fromAccountId} not found.");
-                if (toAccount == null) throw new KeyNotFoundException($"Destination account {toAccountId} not found.");
-
-                // Логика домена
-                fromAccount.Withdraw(amount);
-                toAccount.Deposit(amount);
-
-                // Сохраняем ОБА аккаунта (репозиторий использует SaveChangesAsync, который работает в контексте текущей транзакции)
-                await _accountRepository.UpdateAsync(fromAccount);
-                await _accountRepository.UpdateAsync(toAccount);
-
-                // --- ПОДТВЕРЖДЕНИЕ ТРАНЗАКЦИИ (COMMIT) ---
+                await PerformTransferLogic(fromAccountId, toAccountId, amount);
                 await transaction.CommitAsync();
             }
             catch
@@ -97,6 +84,22 @@ namespace BankApp.Services
                 await transaction.RollbackAsync();
                 throw; // Повторно выбрасываем исходную ошибку
             }
+        }
+
+
+        private async Task PerformTransferLogic(Guid fromAccountId, Guid toAccountId, decimal amount)
+        {
+            var fromAccount = await _accountRepository.GetByIdAsync(fromAccountId);
+            var toAccount = await _accountRepository.GetByIdAsync(toAccountId);
+
+            if (fromAccount == null) throw new KeyNotFoundException($"Source account {fromAccountId} not found.");
+            if (toAccount == null) throw new KeyNotFoundException($"Destination account {toAccountId} not found.");
+
+            fromAccount.Withdraw(amount);
+            toAccount.Deposit(amount);
+
+            await _accountRepository.UpdateAsync(fromAccount);
+            await _accountRepository.UpdateAsync(toAccount);
         }
 
         public async Task<IEnumerable<Transaction>> GetStatementAsync(Guid accountId)

@@ -1,15 +1,47 @@
 using Microsoft.AspNetCore.Identity;
 using System.Threading.Tasks;
 using BankApp.Infrastructure; // Для доступа к ApiUser
-using Microsoft.Extensions.DependencyInjection; // Добавьте этот using
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore; // Добавьте этот using
+using BankApp.Core.Models;
+using System.Timers;
+using Microsoft.AspNetCore.Rewrite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 
 namespace BankApp.Api
 {
+
+
+
     public static class DbInitializer
     {
+
+        public static async Task SeedUsers(BankContext context)
+        {
+            var userManager = context.GetService<UserManager<ApiUser>>();
+
+            // Добавляем проверку на null на всякий случай
+            if (userManager == null)
+            {
+                throw new InvalidOperationException("Не удалось получить UserManager из контекста.");
+            }
+
+            await SeedUsersInternal(userManager);
+        }
+
         public static async Task SeedUsers(IServiceProvider serviceProvider)
         {
-            var userManager = serviceProvider.GetRequiredService<UserManager<ApiUser>>();
+            using (var scope = serviceProvider.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApiUser>>();
+            await SeedUsersInternal(userManager);
+        }
+        }
+
+        public static async Task SeedUsersInternal(UserManager<ApiUser> userManager)
+        {
 
             if (await userManager.FindByNameAsync("admin") == null)
             {
@@ -20,8 +52,6 @@ namespace BankApp.Api
                     EmailConfirmed = true
                 };
 
-                // Попробуем создать с более сложным паролем, 
-                // так как "password123" часто не проходит по умолчанию.
                 var result = await userManager.CreateAsync(user, "Password123!");
 
                 if (result.Succeeded)
@@ -44,4 +74,5 @@ namespace BankApp.Api
             }
         }
     }
+
 }

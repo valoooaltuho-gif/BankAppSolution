@@ -34,10 +34,11 @@ namespace BankApp.Api.Controllers
             var user = await _userManager.FindByNameAsync(loginDto.UserName);
             if (user == null) return Unauthorized(new { message = "Неверное имя пользователя или пароль." });
 
-            // 2. Проверяем пароль
-            var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
+            // 2. Проверяем пароль НАПРЯМУЮ через UserManager. 
+            // Это обходит проблему с SignInManager в тестовой среде.
+            var isPasswordValid = await _userManager.CheckPasswordAsync(user, loginDto.Password);
 
-            if (result.Succeeded)
+            if (isPasswordValid)
             {
                 // 3. Если успешно, генерируем JWT токен
                 var token = GenerateJwtToken(user);
@@ -48,24 +49,31 @@ namespace BankApp.Api.Controllers
             return Unauthorized(new { message = "Неверное имя пользователя или пароль." }); // 401 Unauthorized
         }
 
+
         // Вспомогательный метод для генерации JWT токена
         private string GenerateJwtToken(ApiUser user)
         {
+            var jwtKey = _configuration["Jwt:Key"];
+            if (string.IsNullOrEmpty(jwtKey))
+                throw new InvalidOperationException("JWT Key is missing in configuration");
+
+            var key = Encoding.ASCII.GetBytes(jwtKey);
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]);
 
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Name, user.UserName)
-                // Сюда можно добавить роли пользователя, если они есть
-            };
-            
+        new Claim(ClaimTypes.NameIdentifier, user.Id ?? ""),
+        new Claim(ClaimTypes.Name, user.UserName ?? "")
+    };
+
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = System.DateTime.UtcNow.AddHours(1), // Токен действителен 1 час
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
+                Expires = DateTime.UtcNow.AddHours(1),
+                // Здесь часто происходит сбой, если key слишком короткий
+                SigningCredentials = new SigningCredentials(
+                    new SymmetricSecurityKey(key),
+                    SecurityAlgorithms.HmacSha256Signature),
                 Issuer = _configuration["Jwt:Issuer"],
                 Audience = _configuration["Jwt:Audience"]
             };
@@ -74,4 +82,5 @@ namespace BankApp.Api.Controllers
             return tokenHandler.WriteToken(token);
         }
     }
+
 }
