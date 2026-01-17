@@ -12,45 +12,18 @@ using BankApp.Api;
 using Microsoft.Data.Sqlite;
 
 [Collection("Sequential")]
-public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLifetime
+public class AccountIntegrationTests : BaseIntegrationTest
 {
-    private readonly BankApiFactory _factory;
-    private IServiceScope _scope;
-    private BankContext _context;
-    private HttpClient _client;
-    private SqliteConnection _connection;
 
-    public AccountIntegrationTests(BankApiFactory factory)
+    public AccountIntegrationTests(BankApiFactory factory) : base(factory)
     {
-        _factory = factory;
-        _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false
-        });
-    }
-
-    public async Task InitializeAsync()
-    {
-        // Создаем область видимости сервисов (scope) для ЭТОГО теста
-        _scope = _factory.Services.CreateScope();
-        _context = _scope.ServiceProvider.GetRequiredService<BankContext>();
-
-        _connection = new SqliteConnection($"DataSource={_factory.DatabaseName};Mode=Memory;Cache=Shared");
-        await _connection.OpenAsync();
-
-        _context.Database.SetDbConnection(_connection); 
-
-        await _context.Database.MigrateAsync();
-
-        await DbInitializer.SeedUsers(_context);
-        _client.DefaultRequestHeaders.Authorization = null;
     }
 
     [Fact]
     public async Task GetAccounts_WithoutToken_ReturnsUnauthorized()
     {
         // Act
-        var response = await _client.GetAsync("/api/Accounts");
+        var response = await Client.GetAsync("/api/Accounts");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -63,7 +36,7 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         var loginDto = new { UserName = "admin", Password = "Password123!" };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/Auth/login", loginDto);
+        var response = await Client.PostAsJsonAsync("/api/Auth/login", loginDto);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -85,7 +58,7 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         };
 
         // 2. Act - Отправка запроса на создание счета
-        var response = await _client.PostAsJsonAsync("/api/Accounts", createRequest);
+        var response = await Client.PostAsJsonAsync("/api/Accounts", createRequest);
 
         // 3. Assert - Проверка заголовков и тела ответа
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -111,13 +84,13 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         var depositRequest = new { Amount = depositAmount };
 
         // Act
-        var response = await _client.PostAsJsonAsync($"/api/Accounts/{accountId}/deposit", depositRequest);
+        var response = await Client.PostAsJsonAsync($"/api/Accounts/{accountId}/deposit", depositRequest);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Дополнительная проверка: получаем счет снова, чтобы убедиться, что баланс обновился в БД
-        var getResponse = await _client.GetAsync($"/api/Accounts/{accountId}");
+        var getResponse = await Client.GetAsync($"/api/Accounts/{accountId}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var updatedAccount = await getResponse.Content.ReadFromJsonAsync<AccountResponseDto>();
 
@@ -133,12 +106,12 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         var withdrawRequest = new { Amount = 40.00m };
 
         // Act
-        var response = await _client.PostAsJsonAsync($"/api/Accounts/{accountId}/withdraw", withdrawRequest);
+        var response = await Client.PostAsJsonAsync($"/api/Accounts/{accountId}/withdraw", withdrawRequest);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var getResponse = await _client.GetAsync($"/api/Accounts/{accountId}");
+        var getResponse = await Client.GetAsync($"/api/Accounts/{accountId}");
         var updatedAccount = await getResponse.Content.ReadFromJsonAsync<AccountResponseDto>();
         updatedAccount.Balance.Should().Be(60.00m);
     }
@@ -152,7 +125,7 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         var withdrawRequest = new { Amount = 700.00m }; // Больше, чем есть
 
         // Act
-        var response = await _client.PostAsJsonAsync($"/api/Accounts/{accountId}/withdraw", withdrawRequest);
+        var response = await Client.PostAsJsonAsync($"/api/Accounts/{accountId}/withdraw", withdrawRequest);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -170,85 +143,17 @@ public class AccountIntegrationTests : IClassFixture<BankApiFactory>, IAsyncLife
         var transferRequest = new { ToAccountId = toId, Amount = 300m };
 
         // Act
-        var response = await _client.PostAsJsonAsync($"/api/Accounts/{fromId}/transfer", transferRequest);
+        var response = await Client.PostAsJsonAsync($"/api/Accounts/{fromId}/transfer", transferRequest);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var senderAcc = await (await _client.GetAsync($"/api/Accounts/{fromId}")).Content.ReadFromJsonAsync<AccountResponseDto>();
-        var receiverAcc = await (await _client.GetAsync($"/api/Accounts/{toId}")).Content.ReadFromJsonAsync<AccountResponseDto>();
+        var senderAcc = await (await Client.GetAsync($"/api/Accounts/{fromId}")).Content.ReadFromJsonAsync<AccountResponseDto>();
+        var receiverAcc = await (await Client.GetAsync($"/api/Accounts/{toId}")).Content.ReadFromJsonAsync<AccountResponseDto>();
 
         senderAcc.Balance.Should().Be(700m);
         receiverAcc.Balance.Should().Be(500m);
     }
-
-
-
-
-
-
-
-
-
-
-
-    private async Task<Guid> CreateAccountInternalAsync(string owner, decimal initialDeposit)
-    {
-        var createRequest = new
-        {
-            AccountType = "Checking",
-            OwnerName = owner,
-            InitialDeposit = initialDeposit
-        };
-        var response = await _client.PostAsJsonAsync("/api/Accounts", createRequest);
-        response.EnsureSuccessStatusCode();
-        var created = await response.Content.ReadFromJsonAsync<AccountResponseDto>();
-        return created.Id;
-    }
-
-    public async Task DisposeAsync()
-    {
-        // Очищаем БД после каждого теста
-        if (_context != null)
-        {
-            await _context.Database.EnsureDeletedAsync();
-        }
-        // Удаляем scope
-        _scope?.Dispose();
-        _client?.Dispose();
-        await _connection.DisposeAsync();
-    }
-
-    // В классе AccountIntegrationTests
-    private async Task<Guid> CreateAndGetAccountIdAsync()
-    {
-        await AuthenticateAsync();
-
-        var createRequest = new
-        {
-            AccountType = "Checking",
-            OwnerName = "Test Deposit User",
-            InitialDeposit = 100.00m
-        };
-
-        var response = await _client.PostAsJsonAsync("/api/Accounts", createRequest);
-        response.EnsureSuccessStatusCode(); // Убедимся, что создание прошло успешно
-
-        var createdAccount = await response.Content.ReadFromJsonAsync<AccountResponseDto>();
-        return createdAccount.Id;
-    }
-
-
-    private async Task AuthenticateAsync()
-    {
-        var loginDto = new { UserName = "admin", Password = "Password123!" };
-        var response = await _client.PostAsJsonAsync("/api/Auth/login", loginDto);
-        var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        // ЭТО КРИТИЧЕСКИ ВАЖНО: Установка заголовка
-        _client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.Token);
-    }
-
 
 }
 

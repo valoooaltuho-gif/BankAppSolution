@@ -4,6 +4,8 @@ using BankApp.Api;
 using BankApp.Api.DTOs;
 using BankApp.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -15,6 +17,8 @@ public abstract class BaseIntegrationTest : IClassFixture<BankApiFactory>, IAsyn
     protected readonly HttpClient Client;
     protected IServiceScope Scope;
     protected BankContext Context;
+
+    private SqliteConnection _connection;
 
     protected BaseIntegrationTest(BankApiFactory factory)
     {
@@ -28,20 +32,29 @@ public abstract class BaseIntegrationTest : IClassFixture<BankApiFactory>, IAsyn
 
     public virtual async Task InitializeAsync()
     {
-        // Создаем Scope для каждого теста отдельно
         Scope = Factory.Services.CreateScope();
         Context = Scope.ServiceProvider.GetRequiredService<BankContext>();
 
-        // Т.к. в Factory используется Sqlite Memory Cache=Shared, 
-        // база живет пока жив процесс Factory или пока мы не сделаем EnsureCreated.
-        await Context.Database.EnsureCreatedAsync(); 
+        // 1. Создаем и открываем соединение вручную, чтобы база не удалилась раньше времени
+        _connection = new SqliteConnection($"DataSource={Factory.DatabaseName};Mode=Memory;Cache=Shared");
+        await _connection.OpenAsync();
+
+        // 2. Привязываем контекст к этому соединению
+        Context.Database.SetDbConnection(_connection);
+
+        // 3. Создаем схему и наполняем данными
+        await Context.Database.MigrateAsync(); // или EnsureCreatedAsync(), если нет миграций
         await DbInitializer.SeedUsers(Context);
     }
 
     public virtual async Task DisposeAsync()
     {
-        // Очищаем базу после каждого теста, чтобы тесты были изолированы
-        await Context.Database.EnsureDeletedAsync();
+        // 1. Удаляем базу
+        if (Context != null) await Context.Database.EnsureDeletedAsync();
+
+        // 2. Закрываем соединение (теперь база точно удалена из памяти)
+        if (_connection != null) await _connection.DisposeAsync();
+
         Scope?.Dispose();
         Client?.Dispose();
     }
@@ -53,9 +66,9 @@ public abstract class BaseIntegrationTest : IClassFixture<BankApiFactory>, IAsyn
         var loginDto = new { UserName = "admin", Password = "Password123!" };
         var response = await Client.PostAsJsonAsync("/api/Auth/login", loginDto);
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        
+
         // Устанавливаем заголовок для всех последующих запросов этого клиента
-        Client.DefaultRequestHeaders.Authorization = 
+        Client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", result.Token);
     }
 
