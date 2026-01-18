@@ -1,46 +1,55 @@
 pipeline {
-   agent any
+    agent any
 
     environment {
-        // Теперь можно просто dotnet, так как он в /usr/bin
-        DOTNET_CLI = "dotnet" 
+        // Имя вашего будущего образа
+        IMAGE_NAME = "bank-app-api"
+        TAG = "${env.BUILD_NUMBER}"
     }
 
     stages {
-        stage('Preparation') {
+        stage('Checkout') {
             steps {
-                echo 'Checking tools...'
-                sh "${DOTNET_CLI} --version" 
+                // Код скачивается автоматически из Git
+                checkout scm
             }
         }
 
-        stage('Restore') {
+        stage('Docker Build') {
             steps {
-                sh "$DOTNET_CLI restore"
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh "$DOTNET_CLI build --configuration Release --no-restore"
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                sh "$DOTNET_CLI test --no-build --configuration Release --logger 'junit;LogFilePath=test-results.xml'"
-            }
-            post {
-                always {
-                    junit '**/test-results.xml'
+                script {
+                    // Jenkins запускает сборку образа, используя Dockerfile из корня (.)
+                    // Все шаги (restore, build, test, publish) пройдут внутри Docker
+                    customImage = docker.build("${IMAGE_NAME}:${TAG}", ".")
                 }
             }
         }
 
-        stage('Publish (Optional)') {
+        stage('Docker Push (Optional)') {
             steps {
-                sh "$DOTNET_CLI publish -c Release -o ./publish"
+                script {
+                    // Если у вас есть Registry (Docker Hub/Nexus), пушим туда
+                    echo "Pushing image ${IMAGE_NAME}:${TAG}..."
+                    // docker.withRegistry('https://my-repo.com', 'credentials-id') {
+                    //     customImage.push()
+                    // }
+                }
             }
+        }
+        
+        stage('Deploy Local (Test)') {
+            steps {
+                // Можно сразу запустить свежий контейнер для проверки
+                sh "docker rm -f bank-app-instance || true"
+                sh "docker run -d --name bank-app-instance -p 5000:8080 ${IMAGE_NAME}:${TAG}"
+            }
+        }
+    }
+
+    post {
+        always {
+            // Очистка старых образов, чтобы не забивать место на сервере
+            sh "docker image prune -f"
         }
     }
 }
