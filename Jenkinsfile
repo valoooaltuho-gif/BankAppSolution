@@ -1,42 +1,38 @@
 pipeline {
-    agent any // Запускать на любом свободном узле
+    agent any
 
     environment {
-        // Указываем путь к проекту, если он не в корне
-        DOTNET_CLI_HOME = "/tmp/dotnet_home"
+        // Указываем полный путь к исполняемому файлу dotnet
+        DOTNET_CLI = "/usr/bin/dotnet" 
     }
 
     stages {
         stage('Preparation') {
             steps {
                 echo 'Checking tools...'
-                sh 'dotnet --version' // Проверяем, что SDK доступен
+                // Используем переменную окружения
+                sh "$DOTNET_CLI --version" 
             }
         }
 
         stage('Restore') {
             steps {
-                sh 'dotnet restore'
+                sh "$DOTNET_CLI restore"
             }
         }
 
         stage('Build') {
             steps {
-                // Сборка без запуска тестов
-                sh 'dotnet build --configuration Release --no-restore'
+                sh "$DOTNET_CLI build --configuration Release --no-restore"
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
-                echo 'Running Integration Tests...'
-                // Запуск твоих тестов
-                // --logger:junit создаст отчет, который Jenkins сможет прочитать
-                sh 'dotnet test --no-build --configuration Release --logger "junit;LogFilePath=test-results.xml"'
+                sh "$DOTNET_CLI test --no-build --configuration Release --logger 'junit;LogFilePath=test-results.xml'"
             }
             post {
                 always {
-                    // Публикуем результаты тестов в интерфейс Jenkins
                     junit '**/test-results.xml'
                 }
             }
@@ -44,8 +40,7 @@ pipeline {
 
         stage('Publish (Optional)') {
             steps {
-                // Создание готовой папки с приложением (артефакт)
-                sh 'dotnet publish -c Release -o ./publish'
+                sh "$DOTNET_CLI publish -c Release -o ./publish"
             }
         }
     }
