@@ -1,17 +1,16 @@
 pipeline {
-    agent any
+   agent any
 
     environment {
-        // Указываем полный путь к исполняемому файлу dotnet
-        DOTNET_CLI = "/usr/bin/dotnet" 
+        // Теперь можно просто dotnet, так как он в /usr/bin
+        DOTNET_CLI = "dotnet" 
     }
 
     stages {
         stage('Preparation') {
             steps {
                 echo 'Checking tools...'
-                // Используем переменную окружения
-                sh "$DOTNET_CLI --version" 
+                sh "${DOTNET_CLI} --version" 
             }
         }
 
