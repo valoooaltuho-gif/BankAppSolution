@@ -39,7 +39,10 @@ pipeline {
 
         stage('Publish (Optional)') {
             steps {
-                sh "$DOTNET_CLI publish -c Release -o ./publish"
+                // Публикуем только исполняемый проект API в его собственную папку 'publish_api'
+                sh "$DOTNET_CLI publish BankApp.Api/BankApp.Api.csproj -c Release -o ./publish_api"
+                // Опционально: можно добавить публикацию консольного приложения
+                sh "$DOTNET_CLI publish BankApp.Console/BankApp.Console.csproj -c Release -o ./publish_console"
             }
         }
     }
